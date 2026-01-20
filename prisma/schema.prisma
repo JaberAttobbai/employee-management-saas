@@ -1,5 +1,5 @@
-// ملف تعريف قاعدة البيانات - SQLite Version
-// SQLite لا يدعم Enums، لذلك نستخدم String مع قيود
+// ملف تعريف قاعدة البيانات - Turso (LibSQL) for Production
+// يدعم SQLite محلياً و Turso في Production
 
 generator client {
   provider = "prisma-client-js"
