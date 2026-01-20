@@ -1,0 +1,212 @@
+// ملف تعريف قاعدة البيانات - SQLite Version
+// SQLite لا يدعم Enums، لذلك نستخدم String مع قيود
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// جدول الشركات (Tenants)
+// ============================================
+model Tenant {
+  id            String   @id @default(uuid())
+  name          String   // اسم الشركة
+  domain        String   @unique  // نطاق فرعي
+  size          String   @default("SMALL")  // SMALL, MEDIUM, LARGE
+  industry      String?  // المجال
+  logo          String?  // رابط الشعار
+  status        String   @default("TRIAL")  // TRIAL, ACTIVE, SUSPENDED
+  trialEndsAt   DateTime?  // تاريخ انتهاء التجربة
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // العلاقات
+  users         User[]
+  employees     Employee[]
+  attendance    Attendance[]
+  leaves        Leave[]
+  leaveBalances LeaveBalance[]
+  settings      Settings?
+
+  @@map("tenants")
+}
+
+// ============================================
+// جدول المستخدمين (Users)
+// ============================================
+model User {
+  id            String   @id @default(uuid())
+  tenantId      String   // الشركة التابع لها
+  email         String   // البريد الإلكتروني
+  password      String   // كلمة المرور (مشفرة)
+  role          String   @default("EMPLOYEE")  // ADMIN, HR, EMPLOYEE
+  status        String   @default("ACTIVE")  // ACTIVE, INACTIVE
+  emailVerified Boolean  @default(false)
+  // 🔐 Security: هل كلمة المرور مؤقتة؟
+  // ملاحظة: في النظام الحالي، هذا الحقل للمعلومات فقط
+  // لا يُستخدم لإجبار المستخدم على تغيير كلمة المرور
+  // الموظف يمكنه تغيير كلمة المرور من داشبورده اختيارياً
+  mustChangePassword Boolean @default(false)
+  lastLoginAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // العلاقات
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee      Employee?  // موظف مرتبط (اختياري)
+  reviewedLeaves Leave[] @relation("ReviewedBy")
+
+  // فهارس للأداء
+  @@unique([tenantId, email])  // بريد فريد داخل كل شركة
+  @@index([tenantId])
+  @@index([email])
+  @@map("users")
+}
+
+// ============================================
+// جدول الموظفين (Employees)
+// ============================================
+model Employee {
+  id             String   @id @default(uuid())
+  tenantId       String   // الشركة
+  userId         String?  @unique  // الحساب المرتبط (اختياري)
+  employeeNumber String   // رقم الموظف (فريد داخل الشركة)
+  firstName      String   // الاسم الأول
+  lastName       String   // اسم العائلة
+  email          String   // البريد الإلكتروني
+  phone          String   // رقم الهاتف
+  birthDate      DateTime?  // تاريخ الميلاد
+  gender         String?  // MALE, FEMALE, OTHER
+  department     String   // القسم
+  position       String   // المنصب
+  hireDate       DateTime // تاريخ التعيين
+  salary         Float?   // الراتب
+  avatar         String?  // صورة الملف الشخصي
+  status         String   @default("ACTIVE")  // ACTIVE, INACTIVE
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // العلاقات
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user           User?    @relation(fields: [userId], references: [id])
+  attendance     Attendance[]
+  leaves         Leave[]
+  leaveBalance   LeaveBalance?
+
+  // فهارس
+  @@unique([tenantId, employeeNumber])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("employees")
+}
+
+// ============================================
+// جدول الحضور (Attendance)
+// ============================================
+model Attendance {
+  id         String   @id @default(uuid())
+  tenantId   String   // الشركة
+  employeeId String   // الموظف
+  date       DateTime // التاريخ (فقط اليوم)
+  checkIn    DateTime // وقت الدخول
+  checkOut   DateTime?  // وقت الخروج
+  totalHours Float?   // إجمالي الساعات
+  status     String   @default("PRESENT")  // PRESENT, LATE, HALF_DAY, ABSENT
+  notes      String?  // ملاحظات
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // العلاقات
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  // فهارس - موظف واحد = سجل واحد لكل يوم
+  @@unique([tenantId, employeeId, date])
+  @@index([tenantId, date])
+  @@map("attendance")
+}
+
+// ============================================
+// جدول الإجازات (Leaves)
+// ============================================
+model Leave {
+  id              String   @id @default(uuid())
+  tenantId        String   // الشركة
+  employeeId      String   // الموظف
+  type            String   // ANNUAL, SICK, EMERGENCY
+  startDate       DateTime // تاريخ البداية
+  endDate         DateTime // تاريخ النهاية
+  days            Int      // عدد الأيام
+  reason          String?  // السبب
+  status          String   @default("PENDING")  // PENDING, APPROVED, REJECTED
+  reviewedBy      String?  // من راجعه
+  reviewedAt      DateTime?  // تاريخ المراجعة
+  rejectionReason String?  // سبب الرفض
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // العلاقات
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  reviewer        User?    @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+
+  // فهارس
+  @@index([tenantId, employeeId])
+  @@index([tenantId, status])
+  @@map("leaves")
+}
+
+// ============================================
+// جدول أرصدة الإجازات (Leave Balances)
+// ============================================
+model LeaveBalance {
+  id               String   @id @default(uuid())
+  tenantId         String   // الشركة
+  employeeId       String   @unique  // الموظف (واحد لواحد)
+  year             Int      // السنة
+  annualTotal      Int      // إجمالي السنوية
+  annualUsed       Int      @default(0)  // المستخدم
+  annualRemaining  Int      // المتبقي
+  sickTotal        Int      // إجمالي المرضية
+  sickUsed         Int      @default(0)
+  sickRemaining    Int      // المتبقي
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // العلاقات
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  // فهارس
+  @@unique([tenantId, employeeId, year])
+  @@map("leave_balances")
+}
+
+// ============================================
+// جدول الإعدادات (Settings)
+// ============================================
+model Settings {
+  id                    String   @id @default(uuid())
+  tenantId              String   @unique  // شركة واحدة = إعدادات واحدة
+  workStartTime         String   @default("08:00")  // وقت بداية العمل
+  workEndTime           String   @default("17:00")  // وقت نهاية العمل
+  lateThresholdMinutes  Int      @default(15)  // التأخير المسموح
+  workDays              String   @default("[\"SUNDAY\",\"MONDAY\",\"TUESDAY\",\"WEDNESDAY\",\"THURSDAY\"]")  // JSON
+  annualLeaveDays       Int      @default(21)  // أيام الإجازة السنوية
+  sickLeaveDays         Int      @default(10)  // أيام الإجازة المرضية
+  holidays              String   @default("[]")  // JSON [{date, name}]
+  currency              String   @default("SAR")  // العملة
+  timezone              String   @default("Asia/Riyadh")  // المنطقة الزمنية
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // العلاقات
+  tenant                Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("settings")
+}
