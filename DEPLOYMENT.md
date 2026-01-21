@@ -37,18 +37,23 @@ turso db tokens create employee-management-saas
 # انسخ القيمة الناتجة
 ```
 
-### 1.4 تطبيق Migrations
+### 1.4 تطبيق Migrations (باستخدام السكريبت)
 
-```bash
-# تعيين DATABASE_URL محلياً
-$env:DATABASE_URL="libsql://employee-management-saas-[username].turso.io"
+بما أن Prisma CLI لا يدعم الاتصال المباشر بـ Turso حالياً لنشر الجداول، قمنا بإنشاء سكريبت خاص لذلك.
 
-# تطبيق migrations
-npx prisma migrate deploy
-
-# أو إنشاء الجداول مباشرة
-npx prisma db push
+1. قم بتعيين متغيرات البيئة (في PowerShell):
+```powershell
+$env:DATABASE_URL="libsql://Example-....turso.io"
+$env:DATABASE_AUTH_TOKEN="ey..."
 ```
+
+2. قم بتثبيت التبعيات وتشغيل السكريبت:
+```bash
+npm install dotenv @libsql/client
+node scripts/deploy-db.js
+```
+
+ستظهر رسائل تفيد بنجاح تطبيق الجداول (`✅ Applied: ...`).
 
 ---
 
